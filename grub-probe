@@ -1,0 +1,112 @@
+#!/bin/env bash
+set -e
+DEBUG=0
+# A simple clone of grub-probe
+# "It just work", to fix my broken grub-probe
+# $ grub-probe <enter>
+# grub-probe: 错误： 无法找到 / 的设备（/dev 是否已挂载？）.
+usage (){
+    echo 'grub-probe [options] [mount point]'
+    echo '-d,--device '
+    echo '-t, --target=<target> [mount point]'
+    echo '-h,--help'
+    echo 'target=[device,fs,partuuid,fs_uuid]'
+}
+probe_device=""
+probe_target=""
+mount_point=""
+while test $# -gt 0
+do 
+    option=$1
+    shift
+    case "${option}" in 
+    -h |--help)
+        usage
+        exit 0
+        ;;
+    --device )
+        probe_device=$1
+        ;;
+    -d )
+        # 因为获取完option之后就shift了，所以现在$1就是后面的选项了
+        probe_device=$1
+    ;;
+    --target=*)
+        probe_target=`echo ${option} |sed 's/--target=//'`
+        ;;
+    -t )
+        
+        probe_target=$1
+        ;;
+    -*|--*)
+        echo "Invaid options"
+        usage
+        exit 1
+        ;;
+    *)
+        mount_point=${option}
+    ;;
+    esac
+done
+if [ $DEBUG -eq 1 ];then 
+echo target $probe_target
+echo mount_point $mount_point
+fi
+
+if [ -z "$probe_device"  ]; then
+    if [ -z "${mount_point}" ];then
+        echo "Not specified mount point, exitting..."
+        exit 1
+    elif [ -z "$(lsblk --raw -o mountpoint|grep ${mount_point})" ];then 
+        echo ${mount_point} is not a mountpoint, exitting...
+        exit 1
+    else 
+        case "${probe_target}" in 
+        "device")
+            find /dev -name $(lsblk --raw -o name,mountpoint|grep ${mount_point}$|sed "s/ \\${mount_point}//")
+            exit 0
+        ;;
+        "fs")
+           if [  $(lsblk --raw -o fstype,mountpoint|grep ${mount_point}$|sed "s/ \\${mount_point}//") == "vfat" ];then
+	   	echo fat
+	   else 
+	   	echo $(lsblk --raw -o fstype,mountpoint|grep ${mount_point}$|sed "s/ \\${mount_point}//")
+	   fi
+            exit 0
+        ;;
+        "partuuid")
+            echo `lsblk --raw -o partuuid,mountpoint|grep ${mount_point}$`|sed "s/ \\${mount_point}//"
+            exit 0
+        ;;
+        "fs_uuid")
+            echo `lsblk --raw -o uuid,mountpoint|grep ${mount_point}$`|sed "s/ \\${mount_point}//"
+            exit 0
+        ;;
+        *)
+            echo Unknown target, eixtting...
+            exit 1
+        ;;
+
+        esac
+    fi
+
+else
+    device=$(echo $probe_device|sed "s/\/dev\///")
+
+    case "${probe_target}" in 
+    "fs")
+    	if [ $(lsblk --raw -o fstype,name|grep ${device}$|sed "s/ ${device}//") == "vfat" ];then
+		echo fat
+	else
+		echo $(lsblk --raw -o fstype,name|grep ${device}$|sed "s/ ${device}//")
+	fi
+        exit 0
+    ;;
+    "partuuid")
+        echo `lsblk --raw -o partuuid,name|grep ${device}$`|sed "s/ ${device}//"
+        exit 0
+    ;;
+    "fs_uuid")
+         echo `lsblk --raw -o uuid,name|grep ${device}$`|sed "s/ ${device}//"
+    esac
+fi
